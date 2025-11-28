@@ -12,7 +12,7 @@
       - name: luigi
         group: developers
         key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOOoHhXwemhNgweKFnou2GKazXYzFJGyVqvPnzggdZqm test@test.com"
-        state: absent
+        state: present
 
       - name: vecchio_dipendente
         group: developers
