@@ -1,0 +1,8 @@
+# Definizione Gruppi
+User_Alias DEVOPS_USERS = %devops
+
+# Comandi consentiti (Status, Restart, Git, CP, MV)
+Cmnd_Alias DEVOPS_CMDS = /usr/bin/systemctl restart nginx, /usr/bin/systemctl restart nginx.service, /usr/bin/systemctl reload nginx, /usr/bin/systemctl reload nginx.service, /usr/bin/systemctl status nginx, /usr/bin/systemctl status nginx.service, /usr/bin/git, /bin/git, /usr/bin/cp, /usr/bin/mv
+
+# Regole:
+DEVOPS_USERS ALL=(root) NOPASSWD: DEVOPS_CMDS
