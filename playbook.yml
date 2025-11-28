@@ -1,0 +1,201 @@
+---
+- name: Configurazione Intelligente (Solo se le cartelle esistono)
+  hosts: all
+  become: yes
+  vars:
+    users:
+      - name: mario
+        group: devops
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOOoHhXwemhNgweKFnou2GKazXYzFJGyVqvPnzggdZqm test@test.com"
+        state: present
+      
+      - name: luigi
+        group: developers
+        key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOOoHhXwemhNgweKFnou2GKazXYzFJGyVqvPnzggdZqm test@test.com"
+        state: absent
+
+      - name: vecchio_dipendente
+        group: developers
+        key: "..."
+        state: absent
+
+  tasks:
+    # ---------------------------------------------------------
+    # 1. PREPARAZIONE SISTEMA (Utenti e Pacchetti) - SEMPRE ESEGUITO
+    # ---------------------------------------------------------
+    - name: Installazione pacchetto ACL
+      package:
+        name: acl
+        state: present
+
+    - name: Assicura esistenza gruppi
+      group:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - developers
+        - devops
+
+    - name: Gestione Utenti
+      user:
+        name: "{{ item.name }}"
+        groups: "{{ item.group }}"
+        append: no
+        shell: /bin/bash
+        state: "{{ item.state }}"
+        remove: yes
+      loop: "{{ users }}"
+
+    - name: Setup Chiavi SSH
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.key }}"
+        state: present
+      loop: "{{ users }}"
+      when: item.state == 'present'
+
+    # ---------------------------------------------------------
+    # 2. CONTROLLI PRELIMINARI (CHECK)
+    # ---------------------------------------------------------
+    
+    # Controlliamo se la cartella APP esiste
+    - name: Verifica esistenza cartella App
+      stat:
+        path: /var/www/html/app/current
+      register: check_app_folder  # Salviamo il risultato qui
+
+    # Controlliamo se la cartella LOG Nginx esiste
+    - name: Verifica esistenza cartella Logs Nginx
+      stat:
+        path: /var/log/nginx
+      register: check_log_folder  # Salviamo il risultato qui
+
+    # ---------------------------------------------------------
+    # 3. GESTIONE ACL APP (Solo se check_app_folder.stat.exists è vero)
+    # ---------------------------------------------------------
+    - name: Configurazione ACL Applicazione
+      block:
+        # Nota: Ho rimosso il task "file: state=directory" che la creava!
+        
+        # ACL DevOps
+        - name: ACL DevOps - Accesso Cartella Corrente
+          acl:
+            path: /var/www/html/app/current
+            entity: devops
+            etype: group
+            permissions: rwx
+            state: present
+            recursive: yes
+            default: no
+
+        - name: ACL DevOps - Ereditarietà Nuovi File
+          acl:
+            path: /var/www/html/app/current
+            entity: devops
+            etype: group
+            permissions: rwx
+            state: present
+            recursive: yes
+            default: yes
+
+        # ACL Developers
+        - name: ACL Developers - Accesso Cartella Corrente
+          acl:
+            path: /var/www/html/app/current
+            entity: developers
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: no
+
+        - name: ACL Developers - Ereditarietà Nuovi File
+          acl:
+            path: /var/www/html/app/current
+            entity: developers
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: yes
+
+        # Fix Mask
+        - name: Forza Mask RWX
+          acl:
+            path: /var/www/html/app/current
+            etype: mask
+            permissions: rwx
+            state: present
+            recursive: yes
+      
+      # QUESTA È LA RIGA MAGICA: Esegue tutto il blocco solo se la cartella c'è
+      when: check_app_folder.stat.exists
+
+
+    # ---------------------------------------------------------
+    # 4. GESTIONE ACL LOGS (Solo se check_log_folder.stat.exists è vero)
+    # ---------------------------------------------------------
+    - name: Configurazione ACL Logs
+      block:
+        - name: ACL Logs Nginx - Developers (RX)
+          acl:
+            path: /var/log/nginx
+            entity: developers
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: no # Corrente
+        
+        - name: ACL Logs Nginx - Developers Default (RX)
+          acl:
+            path: /var/log/nginx
+            entity: developers
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: yes # Futuro
+
+        - name: ACL Logs Nginx - DevOps (RX)
+          acl:
+            path: /var/log/nginx
+            entity: devops
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: no
+
+        - name: ACL Logs Nginx - DevOps Default (RX)
+          acl:
+            path: /var/log/nginx
+            entity: devops
+            etype: group
+            permissions: rx
+            state: present
+            recursive: yes
+            default: yes
+
+        - name: Forza Mask RX su Logs
+          acl:
+            path: /var/log/nginx
+            etype: mask
+            permissions: rwx
+            state: present
+            recursive: yes
+
+      # Esegue tutto il blocco solo se la cartella log c'è
+      when: check_log_folder.stat.exists
+
+    # ---------------------------------------------------------
+    # 5. SUDOERS (Sempre eseguito, o condizionale se vuoi)
+    # ---------------------------------------------------------
+    - name: Distribuisci configurazione Sudoers
+      copy:
+        src: sudoers_granular
+        dest: /etc/sudoers.d/granular_access
+        owner: root
+        group: root
+        mode: '0440'
+        validate: 'visudo -cf %s'
