@@ -1,4 +1,24 @@
 ---
+# --- FASE 0: PREPARAZIONE CHIAVI (Dentro il Container AWX) ---
+- name: Setup Chiavi Locali
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Scrivi la chiave del Bastion su file
+      copy:
+        content: "{{ lookup('env', 'BASTION_KEY_CONTENT') }}"
+        dest: /tmp/bastion_key_awx.pem
+        mode: '0600'
+      # Questo task funziona solo se abbiamo iniettato la variabile da AWX
+      when: lookup('env', 'BASTION_KEY_CONTENT') != ""
+
+# --- FASE 1: LA TUA CONFIGURAZIONE NORMALE ---
+- name: Configurazione Intelligente...
+  hosts: all
+  # ... (tutto il resto del tuo file rimane uguale) ...
+
+---
 - name: Configurazione Intelligente (Solo se le cartelle esistono)
   hosts: all
   become: yes
